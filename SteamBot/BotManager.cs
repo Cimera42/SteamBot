@@ -99,16 +99,13 @@ namespace SteamBot
         /// </summary>
         public void StopBots()
         {
-            if (mainLog != null)
+            mainLog.Debug("Shutting down all bot processes.");
+            foreach (var botProc in botProcs)
             {
-                mainLog.Debug("Shutting down all bot processes.");
-                foreach (var botProc in botProcs)
-                {
-                    botProc.Stop();
-                }
-
-                mainLog.Dispose();
+                botProc.Stop();
             }
+
+            mainLog.Dispose();
             mainLog = null;
         }
 
