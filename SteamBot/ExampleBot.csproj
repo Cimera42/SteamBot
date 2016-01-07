@@ -86,6 +86,7 @@
     <Compile Include="UserHandler.cs" />
     <Compile Include="SimpleUserHandler.cs" />
     <Compile Include="OwnUserHandler.cs" />
+    <Compile Include="HouseBotHandler.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
   <ItemGroup>
