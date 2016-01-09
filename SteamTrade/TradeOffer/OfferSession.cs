@@ -244,29 +244,37 @@ namespace SteamTrade.TradeOffer
         {
             newTradeOfferId = "";
 
-            string resp = steamWeb.Fetch(url, "POST", data, false, referer);
-            if (!String.IsNullOrEmpty(resp))
-            {
-                try
-                {
-                    var offerResponse = JsonConvert.DeserializeObject<NewTradeOfferResponse>(resp);
-                    if (!String.IsNullOrEmpty(offerResponse.TradeOfferId))
-                    {
-                        newTradeOfferId = offerResponse.TradeOfferId;
-                        return true;
-                    }
-                    else
-                    {
-                        //todo: log possible error
-                        Debug.WriteLine(offerResponse.TradeError);
-                    }
-                }
-                catch (JsonException jsex)
-                {
-                    Debug.WriteLine(jsex);
-                }
-            }
-            return false;
+			try
+			{
+				string resp = steamWeb.Fetch(url, "POST", data, false, referer);
+	            if (!String.IsNullOrEmpty(resp))
+	            {
+	                try
+	                {
+	                    var offerResponse = JsonConvert.DeserializeObject<NewTradeOfferResponse>(resp);
+	                    if (!String.IsNullOrEmpty(offerResponse.TradeOfferId))
+	                    {
+	                        newTradeOfferId = offerResponse.TradeOfferId;
+	                        return true;
+	                    }
+	                    else
+	                    {
+	                        //todo: log possible error
+	                        Debug.WriteLine(offerResponse.TradeError);
+	                    }
+	                }
+	                catch (JsonException jsex)
+	                {
+	                    Debug.WriteLine(jsex);
+	                }
+	            }
+	            return false;
+			}
+			catch (Exception e)
+			{
+				Debug.WriteLine (e.Message);
+				return false;
+			}
         }
     }
 

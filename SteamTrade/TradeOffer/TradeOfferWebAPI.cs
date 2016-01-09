@@ -241,6 +241,9 @@ namespace SteamTrade.TradeOffer
         [JsonProperty("time_updated")]
         public int TimeUpdated { get; set; }
 
+		[JsonProperty("tradeid")]
+		public string TradeID { get; set; }
+
         [JsonProperty("from_real_time_trade")]
         public bool FromRealTimeTrade { get; set; }
 

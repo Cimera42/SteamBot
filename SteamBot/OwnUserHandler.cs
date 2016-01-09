@@ -6,9 +6,10 @@ using System;
 using Newtonsoft.Json;
 using System.Net;
 using System.IO;
-using System.Timers;
 using SteamTrade.TradeOffer;
 using System.Text;
+using System.Text.RegularExpressions;
+using System.Threading;
 using HtmlAgilityPack;
 using System.Globalization;
 using SteamAuth;
@@ -19,8 +20,8 @@ namespace SteamBot
 	{
 		public OwnUserHandler (Bot bot, SteamID sid) : base(bot, sid) {}
 
-		System.Timers.Timer tradeCheckTimer;
-		bool stillTrading = false;
+		System.Threading.Timer tradeCheckTimer;
+		bool debug_output = false;
 		Dictionary<int, bool> tradesDone = new Dictionary<int, bool>();
 
 		public class TradeUser
@@ -45,159 +46,231 @@ namespace SteamBot
 			public List<TradeData> trades;
 		}
 
-		private void checkForTrades(object CancellationTokenSource, ElapsedEventArgs e)
+		private void checkForTrades()
 		{
-			string password = System.IO.File.ReadAllText(@"E:\Programming\Web\cstrade_admin_password.txt");
-			if(stillTrading == false)
+			string password = System.IO.File.ReadAllText(@"F:\Stuff\Websites\cstrade_admin_password.txt");
+
+			//Log.Info("Checking http://127.0.0.1:7001/php/get_items.php for new trades");
+
+			string getUrl = "http://127.0.0.1:7001/backend/get_items.php";
+			var getRequest = (HttpWebRequest)WebRequest.Create (getUrl);
+
+			string getData = "password=" + password;
+			getData += "&bot_steam_id=" + Bot.SteamUser.SteamID.ConvertToUInt64();
+			var getData_encoded = Encoding.ASCII.GetBytes (getData);
+
+			getRequest.Method = "POST";
+			getRequest.ContentType = "application/x-www-form-urlencoded";
+			getRequest.ContentLength = getData_encoded.Length;
+
+			using (var stream = getRequest.GetRequestStream ()) {
+				stream.Write (getData_encoded, 0, getData_encoded.Length);
+			}
+
+			TradeList data;
+			for(int attempts = 0;;attempts++)
 			{
-				stillTrading = true;
-
-				//Log.Info("Checking http://10.0.0.53:4001/php/get_items.php for new trades");
-
-				string getUrl = "http://10.0.0.53:4001/backend/get_items.php";
-				var getRequest = (HttpWebRequest)WebRequest.Create (getUrl);
-
-				string getData = "password=" + password;
-				getData += "&bot_steam_id=" + Bot.SteamUser.SteamID.ConvertToUInt64();
-				var getData_encoded = Encoding.ASCII.GetBytes (getData);
-
-				getRequest.Method = "POST";
-				getRequest.ContentType = "application/x-www-form-urlencoded";
-				getRequest.ContentLength = getData_encoded.Length;
-
-				using (var stream = getRequest.GetRequestStream ()) {
-					stream.Write (getData_encoded, 0, getData_encoded.Length);
-				}
-
-				var getResponse = (HttpWebResponse)getRequest.GetResponse ();
-				string getString = new StreamReader (getResponse.GetResponseStream()).ReadToEnd();
-				TradeList data = JsonConvert.DeserializeObject<TradeList> (getString);
-
-				foreach(TradeData trade in data.trades)
+				try
 				{
-					bool tradeValue;
-					if(tradesDone.TryGetValue(trade.tradeid, out tradeValue))
-					{
-						//Log.Info("Trade " + trade.tradeid + " already made");
+					var getResponse = (HttpWebResponse)getRequest.GetResponse (); //THIS LINE/AREA IS CAUSING A LOT OF ISSUES... TRY CATCH NEEDED
+					string getString = new StreamReader (getResponse.GetResponseStream()).ReadToEnd();
+					if (debug_output) {
+						Log.Info(getString + "");
 					}
-					else if(trade.status == 2 || trade.status == 9 || trade.status == 11)
-					{
-						Log.Info("Incomplete trade missing from update list, adding now " + trade.tradeid);
-						tradesDone[trade.tradeid] = true;
-						tradeStatuses[trade.tradeid] = new TradeStatus(trade.user.steamid, trade.steamid, trade.tradeid, trade.type);						
-					}
-					else
-					{
-						Log.Info("Trade " + trade.tradeid + " not completed. Attempting now.");
-						TradeUser user = trade.user;
+					data = JsonConvert.DeserializeObject<TradeList> (getString);
+					break;
+				}
+				catch (Exception e)
+				{
+					Log.Error (e.Message);
+					if(attempts > 4)
+						throw e;
+				}
+			}
 
-						var tradeOffer = Bot.NewTradeOffer(new SteamID(user.steamid));
-						int count = 0;
-						foreach(long item in trade.items)
-						{
-							Log.Info("adding item " + item + " to trade");
-							if(trade.type.Equals("d", StringComparison.Ordinal) || 
-							   trade.type.Equals("t", StringComparison.Ordinal))
-							{
-								tradeOffer.Items.AddTheirItem(730, 2, item);
-							}
-							else if(trade.type.Equals("w", StringComparison.Ordinal))
-							{
-								tradeOffer.Items.AddMyItem(730, 2, item);
-							}
-							count++;
-						}
+			foreach(TradeData trade in data.trades)
+			{
+				bool tradeValue;
+				if(tradesDone.TryGetValue(trade.tradeid, out tradeValue))
+				{
+					//Log.Info("Trade " + trade.tradeid + " already made");
+				}
+				else if(trade.status == 2 || trade.status == 9 || trade.status == 11)
+				{
+					Log.Info("Incomplete Trade Missing with tradeID: " + trade.tradeid);
+					tradesDone[trade.tradeid] = true;
+					tradeStatuses[trade.tradeid] = new TradeStatus(trade.user.steamid, trade.steamid, trade.tradeid, trade.type);						
+				}
+				else
+				{
+					Log.Info("Trade " + trade.tradeid + " not completed... Attempting");
+					TradeUser user = trade.user;
+
+					var tradeOffer = Bot.NewTradeOffer(new SteamID(user.steamid));
+					int count = 0;
+					foreach(long item in trade.items)
+					{
+						Log.Info("Adding Item with AssetID: " + item + " to Trade");
 						if(trade.type.Equals("d", StringComparison.Ordinal) || 
 						   trade.type.Equals("t", StringComparison.Ordinal))
 						{
-							Log.Info(count + " items being traded from user " + user.steamid);
+							tradeOffer.Items.AddTheirItem(730, 2, item);
 						}
 						else if(trade.type.Equals("w", StringComparison.Ordinal))
 						{
-							Log.Info(count + " items being traded to user " + user.steamid);
+							tradeOffer.Items.AddMyItem(730, 2, item);
 						}
+						count++;
+					}
+					if(trade.type.Equals("d", StringComparison.Ordinal) || 
+					   trade.type.Equals("t", StringComparison.Ordinal))
+					{
+						Log.Info("Deposit/MultiTrade: " + count + " items being traded from user " + user.steamid);
+					}
+					else if(trade.type.Equals("w", StringComparison.Ordinal))
+					{
+						Log.Info("Withdrawal: " + count + " items being traded to user " + user.steamid);
+					}
 
-						if (tradeOffer.Items.NewVersion)
+					if (tradeOffer.Items.NewVersion)
+					{
+						string tradeID;
+						try
 						{
-							Log.Info("Current trade version - " + trade.user.token);
-							string tradeID;
-							try
+							if(tradeOffer.SendWithToken(out tradeID, trade.user.token, "Secure Code: " + trade.code))
 							{
-								if(tradeOffer.SendWithToken(out tradeID, trade.user.token, "Secure Code: " + trade.code))
-								{
-									Log.Success("New trade offer with id " + tradeID);
-									tradesDone[trade.tradeid] = true;
-									tradeStatuses[trade.tradeid] = new TradeStatus(user.steamid, tradeID, trade.tradeid, trade.type);
+								Log.Success("New TradeID: " + tradeID);
+								tradesDone[trade.tradeid] = true;
+								tradeStatuses[trade.tradeid] = new TradeStatus(user.steamid, tradeID, trade.tradeid, trade.type);
 
-									string setTradeIDData = "password=" + password;
-									setTradeIDData += "&trade_id=" + trade.tradeid;
-									setTradeIDData += "&trade_steam_id=" + tradeID;
+								string setTradeIDData = "password=" + password;
+								setTradeIDData += "&trade_id=" + trade.tradeid;
+								setTradeIDData += "&trade_steam_id=" + tradeID;
 
-									string url = "http://10.0.0.53:4001/backend/update_trade.php";
-									var updaterequest = (HttpWebRequest)WebRequest.Create (url);
-
-									var setTradeID_data = Encoding.ASCII.GetBytes (setTradeIDData);
-
-									updaterequest.Method = "POST";
-									updaterequest.ContentType = "application/x-www-form-urlencoded";
-									updaterequest.ContentLength = setTradeID_data.Length;
-
-									using (var stream = updaterequest.GetRequestStream ()) {
-										stream.Write (setTradeID_data, 0, setTradeID_data.Length);
-									}
-									var response = (HttpWebResponse)updaterequest.GetResponse ();
-									var responseString = new StreamReader (response.GetResponseStream ()).ReadToEnd ();
-									if(responseString.Contains("success"))
-									{
-										Log.Success("Steam trade id set");
-									}
-								}
-								else
-								{
-									Log.Info("Trade offer failed to send");
-								}
-							}
-							catch (Exception exc)
-							{
-								Log.Error("Trade offer could not be sent");
-
-								string postData = "password=" + password;
-								postData += "&trade_id=" + trade.tradeid;
-								postData += "&trade_status=" + 12;
-								postData += "&user_steam_id=" + user.steamid;
-								postData += "&bot_steam_id=" + Bot.SteamUser.SteamID.ConvertToUInt64();
-
-								string url = "http://10.0.0.53:4001/backend/update_trade.php";
+								string url = "http://127.0.0.1:7001/backend/update_trade.php";
 								var updaterequest = (HttpWebRequest)WebRequest.Create (url);
 
-								var failedTrade_data = Encoding.ASCII.GetBytes (postData);
+								var setTradeID_data = Encoding.ASCII.GetBytes (setTradeIDData);
 
 								updaterequest.Method = "POST";
 								updaterequest.ContentType = "application/x-www-form-urlencoded";
-								updaterequest.ContentLength = failedTrade_data.Length;
+								updaterequest.ContentLength = setTradeID_data.Length;
 
 								using (var stream = updaterequest.GetRequestStream ()) {
-									stream.Write (failedTrade_data, 0, failedTrade_data.Length);
+									stream.Write (setTradeID_data, 0, setTradeID_data.Length);
 								}
-								var response = (HttpWebResponse)updaterequest.GetResponse ();
-								var responseString = new StreamReader (response.GetResponseStream ()).ReadToEnd ();
-								if(responseString.Contains("success"))
+
+								for(int attempts = 0;;attempts++)
 								{
-									Log.Success("Trade status updated");
+									try
+									{
+										var response = (HttpWebResponse)updaterequest.GetResponse ();
+										var responseString = new StreamReader (response.GetResponseStream ()).ReadToEnd ();
+										if(responseString.Contains("success"))
+										{
+											Log.Info("Steam TradeID set in update_trade.");
+										}
+										break;
+									}
+									catch (Exception e)
+									{
+										Log.Error (e.Message);
+										if(attempts > 4)
+											throw e;
+									}
+								}
+							}
+							else
+							{
+								Log.Error("Trade offer failed to send");
+							}
+						}
+						catch (Exception exc)
+						{
+							Log.Error("Trade offer could not be sent " + exc.Message);
+
+							string postData = "password=" + password;
+							postData += "&trade_id=" + trade.tradeid;
+							postData += "&trade_status=" + 12;
+							postData += "&user_steam_id=" + user.steamid;
+							postData += "&bot_steam_id=" + Bot.SteamUser.SteamID.ConvertToUInt64();
+
+							string url = "http://127.0.0.1:7001/backend/update_trade.php";
+							var updaterequest = (HttpWebRequest)WebRequest.Create (url);
+
+							var failedTrade_data = Encoding.ASCII.GetBytes (postData);
+
+							updaterequest.Method = "POST";
+							updaterequest.ContentType = "application/x-www-form-urlencoded";
+							updaterequest.ContentLength = failedTrade_data.Length;
+
+							using (var stream = updaterequest.GetRequestStream ()) {
+								stream.Write (failedTrade_data, 0, failedTrade_data.Length);
+							}
+
+							for (int attempts = 0;; attempts++) 
+							{
+								try 
+								{
+									var response = (HttpWebResponse)updaterequest.GetResponse ();
+									var responseString = new StreamReader (response.GetResponseStream ()).ReadToEnd ();
+									if (responseString.Contains ("success")) {
+										Log.Success ("Trade status updated.");
+									}
+									break;
+								} catch (Exception e) {
+									Log.Error (e.Message);
+									if (attempts > 4)
+										throw e;
 								}
 							}
 						}
-						else
+					}
+					else
+					{
+						Log.Error("Old version of trade. Cancelling.");
+
+						string postData = "password=" + password;
+						postData += "&trade_id=" + trade.tradeid;
+						postData += "&trade_status=" + 12;
+						postData += "&user_steam_id=" + user.steamid;
+						postData += "&bot_steam_id=" + Bot.SteamUser.SteamID.ConvertToUInt64();
+
+						string url = "http://127.0.0.1:7001/backend/update_trade.php";
+						var updaterequest = (HttpWebRequest)WebRequest.Create (url);
+
+						var failedTrade_data = Encoding.ASCII.GetBytes (postData);
+
+						updaterequest.Method = "POST";
+						updaterequest.ContentType = "application/x-www-form-urlencoded";
+						updaterequest.ContentLength = failedTrade_data.Length;
+
+						using (var stream = updaterequest.GetRequestStream ()) {
+							stream.Write (failedTrade_data, 0, failedTrade_data.Length);
+						}
+
+						for (int attempts = 0;; attempts++) 
 						{
-							Log.Info("Old version of trade. Canceling.");
+							try 
+							{
+								var response = (HttpWebResponse)updaterequest.GetResponse ();
+								var responseString = new StreamReader (response.GetResponseStream ()).ReadToEnd ();
+								if (responseString.Contains ("success")) {
+									Log.Success ("Trade status updated.");
+								}
+								break;
+							} catch (Exception e) {
+								Log.Error (e.Message);
+								if (attempts > 4)
+									throw e;
+							}
 						}
 					}
 				}
-				stillTrading = false;
 			}
 			//https://steamcommunity.com/tradeoffer/new/?partner=81920318&token=od9DZwUG
 		}
-			
+
 		Dictionary<int, TradeStatus> tradeStatuses = new Dictionary<int, TradeStatus>();
 
 		public class TradeStatus
@@ -221,9 +294,9 @@ namespace SteamBot
 			}
 		}
 
-		public void checkTradeStatuses(object CancellationTokenSource, ElapsedEventArgs e)
+		public void checkTradeStatuses()
 		{
-			string password = System.IO.File.ReadAllText(@"E:\Programming\Web\cstrade_admin_password.txt");
+			string password = System.IO.File.ReadAllText(@"F:\Stuff\Websites\cstrade_admin_password.txt");
 			foreach(KeyValuePair<int, TradeStatus> trade in tradeStatuses)
 			{
 				if(trade.Value.state == TradeOfferState.TradeOfferStateCanceled
@@ -242,10 +315,13 @@ namespace SteamBot
 					bool traderequest = Bot.TryGetTradeOffer(trade.Value.steam_trade_id, out tradeOfferData);
 					if(traderequest)
 					{
-						if(trade.Value.state != tradeOfferData.OfferState)
+						if (trade.Value.state != tradeOfferData.OfferState) 
 						{
-							Log.Info("Trade " + trade.Value.steam_trade_id + "/" + trade.Value.server_trade_id + " has status of " + tradeOfferData.OfferState + "/" + (int)tradeOfferData.OfferState);
+							Log.Info ("Trade " + trade.Value.steam_trade_id + "/" + trade.Value.server_trade_id + " has status of " + tradeOfferData.OfferState + "/" + (int)tradeOfferData.OfferState);
 							trade.Value.state = tradeOfferData.OfferState;
+						} else 
+						{
+							continue; //go to next trade because state hasnt changed...
 						}
 
 						List<long> itemids = new List<long>();
@@ -254,45 +330,32 @@ namespace SteamBot
 						{
 							if(tradeOfferData.OfferState == TradeOfferState.TradeOfferStateAccepted)
 							{
-								string tradeHistory = Bot.SteamWeb.Fetch("http://steamcommunity.com/profiles/76561198258413368/inventoryhistory/", "GET", null, false);
-								HtmlDocument doc = new HtmlDocument();
-								doc.LoadHtml(tradeHistory);
-
-								HtmlNodeCollection trades = doc.DocumentNode.SelectNodes(".//div[contains(@class, 'tradehistoryrow')]");
-								HtmlNode tradeNode = HtmlNode.CreateNode("");
-								bool found = false;
-								foreach(HtmlNode nextTrade in trades)
+								for (int attempts = 0;; attempts++) 
 								{
-									HtmlNode date = nextTrade.SelectSingleNode(".//div[contains(@class, 'tradehistory_date')]");
-									HtmlNode time = nextTrade.SelectSingleNode(".//span[contains(@class, 'tradehistory_timestamp')]");
-
-									DateTime thenDate = DateTime.Parse(time.InnerHtml + " " + date.InnerHtml);
-									DateTime other = TimeZoneInfo.ConvertTimeBySystemTimeZoneId(thenDate, "Pacific Standard Time", TimeZoneInfo.Utc.Id);
-									Log.Info("Yr: {0}, Mon: {1}, Day: {2}, Hr: {3}, Min: {4}", other.Year, other.Month, other.Day, other.Hour, other.Minute);
-									var epoch = (other - new DateTime(1970, 1, 1)).TotalSeconds;
-
-									if(Math.Abs(epoch - tradeOfferData.TimeUpdated) < 120)
+									try 
 									{
-										tradeNode = nextTrade;
-										found = true;
+										string tradeReceipt = Bot.SteamWeb.Fetch("http://steamcommunity.com/trade/"+tradeOfferData.TradeID+"/receipt/", "GET", null, false);
+
+										string start = "oItem = ";
+										string end = ";";
+										string input = tradeReceipt;
+
+										Regex r = new Regex("(?<="+start+")" + "(.*?)" + "(?="+end+")");
+										MatchCollection matches = r.Matches(input);
+										foreach (Match match in matches) 
+										{
+											string itemJSON = match.Value;
+											dynamic itemJsonified = JsonConvert.DeserializeObject (itemJSON);
+											string itemID = itemJsonified.id;
+											long id = Convert.ToInt64 (itemID);
+											itemids.Add(id);
+										}
 										break;
+									} catch (Exception e) {
+										Log.Error (e.Message);
+										if (attempts > 4)
+											throw e;
 									}
-								}
-								if(found)
-								{
-									HtmlNode receiveditemsNode = tradeNode.SelectSingleNode(".//div[contains(@class, 'tradehistory_items_received')]");
-									HtmlNodeCollection receiveditemsList = receiveditemsNode.SelectNodes(".//a[contains(@class, 'history_item')]");
-									foreach(HtmlNode item in receiveditemsList)
-									{
-										string itemdata = item.GetAttributeValue("href", "nope");
-										string[] splited = itemdata.Split('_');
-										long id = Convert.ToInt64(splited[splited.Length-1]);
-										itemids.Add(id);
-									}
-								}
-								else
-								{
-									Log.Error("Could not find trade " + trade.Value.steam_trade_id);
 								}
 							}
 						}
@@ -313,7 +376,7 @@ namespace SteamBot
 						postData += "&trade_asset_ids=" + JsonConvert.SerializeObject(itemids);
 						postData += "&trade_type=" + trade.Value.trade_type;
 
-						string url = "http://10.0.0.53:4001/backend/update_trade.php";
+						string url = "http://127.0.0.1:7001/backend/update_trade.php";
 						var updaterequest = (HttpWebRequest)WebRequest.Create (url);
 
 						var data = Encoding.ASCII.GetBytes (postData);
@@ -325,47 +388,68 @@ namespace SteamBot
 						using (var stream = updaterequest.GetRequestStream ()) {
 							stream.Write (data, 0, data.Length);
 						}
-						var response = (HttpWebResponse)updaterequest.GetResponse ();
-						var responseString = new StreamReader (response.GetResponseStream ()).ReadToEnd ();
-						if(responseString.Contains("success"))
+
+						for (int attempts = 0;; attempts++) 
 						{
-							Log.Success("Trade " + trade.Value.steam_trade_id + "/" + trade.Value.server_trade_id + " status updated");
-						}
-						if(trade.Value.trade_type.Equals("d", StringComparison.Ordinal))
-						{
-							if(responseString.Contains("itemspushed"))
+							try 
 							{
-								trade.Value.itemsPushed = true;
-								Log.Success("Trade items successfully added to user account");
+								var response = (HttpWebResponse)updaterequest.GetResponse ();
+								var responseString = new StreamReader (response.GetResponseStream ()).ReadToEnd ();
+								if(responseString.Contains("success"))
+								{
+									Log.Success("Trade " + trade.Value.steam_trade_id + "/" + trade.Value.server_trade_id + " status updated.");
+								}
+								if(trade.Value.trade_type.Equals("d", StringComparison.Ordinal))
+								{
+									if(responseString.Contains("itemspushed"))
+									{
+										trade.Value.itemsPushed = true;
+										Log.Success("Trade items successfully added to user account");
+									}
+								}
+								else if(responseString.Contains("completed"))
+								{
+									trade.Value.itemsPushed = true;
+								}
+								break;
+							} catch (Exception e) {
+								Log.Error (e.Message);
+								if (attempts > 4)
+									throw e;
 							}
-						}
-						else if(responseString.Contains("completed"))
-						{
-							trade.Value.itemsPushed = true;
 						}
 					}
 					else
 					{
-						Log.Info("Trade offer state request failed");
+						Log.Warn("Trade offer state request failed.");
 					}
 				}
 			}
 		}
 
+		public void Callback( Object state )
+		{
+			// Long running operation
+			checkForTrades ();
+			checkTradeStatuses ();
+			tradeCheckTimer.Change(5000, Timeout.Infinite );
+		}
+
         public override void OnLoginCompleted()
         {
-			tradeCheckTimer = new System.Timers.Timer ();
-			tradeCheckTimer.Elapsed += new ElapsedEventHandler (checkForTrades);
-			tradeCheckTimer.Elapsed += new ElapsedEventHandler (checkTradeStatuses);
+			tradeCheckTimer = new System.Threading.Timer (Callback, null, 5000, Timeout.Infinite );
+			/*tradeCheckTimer. += new ElapsedEventHandler ();
+			tradeCheckTimer.Elapsed += new ElapsedEventHandler ();
 			tradeCheckTimer.Interval = 5000;
-			tradeCheckTimer.Start ();
+			tradeCheckTimer.Start ();*/
         }
 
 		public override void OnBotCommand(string command)
 		{
-			if(command.Equals("genAuthCode", StringComparison.Ordinal))
-			{
-				Log.Success(Bot.SteamGuardAccount.GenerateSteamGuardCode());
+			if (command.Equals ("genAuthCode", StringComparison.Ordinal)) {
+				Log.Success (Bot.SteamGuardAccount.GenerateSteamGuardCode ());
+			} else if (command.Equals ("debugOutput", StringComparison.Ordinal)) {
+				debug_output = !debug_output;
 			}
 		}
 
@@ -379,11 +463,11 @@ namespace SteamBot
 			}
 			else
 			{
-				string password = System.IO.File.ReadAllText(@"E:\Programming\Web\cstrade_admin_password.txt");
+				string password = System.IO.File.ReadAllText(@"F:\Stuff\Websites\cstrade_admin_password.txt");
 				string postData = "password=" + password;
 				postData += "&other_steam_id=" + OtherSID.ConvertToUInt64();
 
-				string url = "http://10.0.0.53:4001/backend/check_bot.php";
+				string url = "http://127.0.0.1:7001/backend/check_bot.php";
 				var updaterequest = (HttpWebRequest)WebRequest.Create (url);
 
 				var data = Encoding.ASCII.GetBytes (postData);
@@ -395,17 +479,29 @@ namespace SteamBot
 				using (var stream = updaterequest.GetRequestStream ()) {
 					stream.Write (data, 0, data.Length);
 				}
-				var response = (HttpWebResponse)updaterequest.GetResponse ();
-				var responseString = new StreamReader (response.GetResponseStream ()).ReadToEnd ();
-				if(responseString.Contains("success"))
+
+				for (int attempts = 0;; attempts++) 
 				{
-					Log.Success("Confirming trade from fellow bot");
-					offer.Accept();
-					Bot.AcceptAllMobileTradeConfirmations();
-				}
-				else
-				{
-					offer.Decline();
+					try 
+					{
+						var response = (HttpWebResponse)updaterequest.GetResponse ();
+						var responseString = new StreamReader (response.GetResponseStream ()).ReadToEnd ();
+						if(responseString.Contains("success"))
+						{
+							Log.Success("Confirming trade from fellow bot");
+							offer.Accept();
+							Bot.AcceptAllMobileTradeConfirmations();
+						}
+						else
+						{
+							offer.Decline();
+						}
+						break;
+					} catch (Exception e) {
+						Log.Error (e.Message);
+						if (attempts > 4)
+							throw e;
+					}
 				}
 			}
 		}
