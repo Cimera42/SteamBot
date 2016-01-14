@@ -43,16 +43,15 @@ namespace SteamBot
 
 		public class TradeList
 		{
-			public List<TradeData> trades;
+			public List<TradeData> trades = new List<TradeData>();
 		}
 
 		private void checkForTrades()
 		{
-			string password = System.IO.File.ReadAllText(@"F:\Stuff\Websites\cstrade_admin_password.txt");
+			string password = System.IO.File.ReadAllText(@"../cstrade_admin_password.txt");
 
-			//Log.Info("Checking http://127.0.0.1:7001/php/get_items.php for new trades");
-
-			string getUrl = "http://127.0.0.1:7001/backend/get_items.php";
+			TradeList data;
+			string getUrl = "http://skinbonanza.com/backend/get_items.php";
 			var getRequest = (HttpWebRequest)WebRequest.Create (getUrl);
 
 			string getData = "password=" + password;
@@ -67,7 +66,6 @@ namespace SteamBot
 				stream.Write (getData_encoded, 0, getData_encoded.Length);
 			}
 
-			TradeList data;
 			for(int attempts = 0;;attempts++)
 			{
 				try
@@ -82,6 +80,7 @@ namespace SteamBot
 				}
 				catch (Exception e)
 				{
+					getRequest.Abort ();
 					Log.Error (e.Message);
 					if(attempts > 4)
 						throw e;
@@ -147,7 +146,7 @@ namespace SteamBot
 								setTradeIDData += "&trade_id=" + trade.tradeid;
 								setTradeIDData += "&trade_steam_id=" + tradeID;
 
-								string url = "http://127.0.0.1:7001/backend/update_trade.php";
+								string url = "http://skinbonanza.com/backend/update_trade.php";
 								var updaterequest = (HttpWebRequest)WebRequest.Create (url);
 
 								var setTradeID_data = Encoding.ASCII.GetBytes (setTradeIDData);
@@ -195,7 +194,7 @@ namespace SteamBot
 							postData += "&user_steam_id=" + user.steamid;
 							postData += "&bot_steam_id=" + Bot.SteamUser.SteamID.ConvertToUInt64();
 
-							string url = "http://127.0.0.1:7001/backend/update_trade.php";
+							string url = "http://skinbonanza.com/backend/update_trade.php";
 							var updaterequest = (HttpWebRequest)WebRequest.Create (url);
 
 							var failedTrade_data = Encoding.ASCII.GetBytes (postData);
@@ -236,7 +235,7 @@ namespace SteamBot
 						postData += "&user_steam_id=" + user.steamid;
 						postData += "&bot_steam_id=" + Bot.SteamUser.SteamID.ConvertToUInt64();
 
-						string url = "http://127.0.0.1:7001/backend/update_trade.php";
+						string url = "http://skinbonanza.com/backend/update_trade.php";
 						var updaterequest = (HttpWebRequest)WebRequest.Create (url);
 
 						var failedTrade_data = Encoding.ASCII.GetBytes (postData);
@@ -296,7 +295,7 @@ namespace SteamBot
 
 		public void checkTradeStatuses()
 		{
-			string password = System.IO.File.ReadAllText(@"F:\Stuff\Websites\cstrade_admin_password.txt");
+			string password = System.IO.File.ReadAllText(@"../cstrade_admin_password.txt");
 			foreach(KeyValuePair<int, TradeStatus> trade in tradeStatuses)
 			{
 				if(trade.Value.state == TradeOfferState.TradeOfferStateCanceled
@@ -376,7 +375,7 @@ namespace SteamBot
 						postData += "&trade_asset_ids=" + JsonConvert.SerializeObject(itemids);
 						postData += "&trade_type=" + trade.Value.trade_type;
 
-						string url = "http://127.0.0.1:7001/backend/update_trade.php";
+						string url = "http://skinbonanza.com/backend/update_trade.php";
 						var updaterequest = (HttpWebRequest)WebRequest.Create (url);
 
 						var data = Encoding.ASCII.GetBytes (postData);
@@ -463,11 +462,11 @@ namespace SteamBot
 			}
 			else
 			{
-				string password = System.IO.File.ReadAllText(@"F:\Stuff\Websites\cstrade_admin_password.txt");
+				string password = System.IO.File.ReadAllText(@"../cstrade_admin_password.txt");
 				string postData = "password=" + password;
 				postData += "&other_steam_id=" + OtherSID.ConvertToUInt64();
 
-				string url = "http://127.0.0.1:7001/backend/check_bot.php";
+				string url = "http://skinbonanza.com/backend/check_bot.php";
 				var updaterequest = (HttpWebRequest)WebRequest.Create (url);
 
 				var data = Encoding.ASCII.GetBytes (postData);

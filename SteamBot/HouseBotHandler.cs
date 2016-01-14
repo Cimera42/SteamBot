@@ -37,11 +37,11 @@ namespace SteamBot
 			}
 			else
 			{
-				string password = System.IO.File.ReadAllText(@"F:\Stuff\Websites\cstrade_admin_password.txt");
+				string password = System.IO.File.ReadAllText(@"../cstrade_admin_password.txt");
 				string postData = "password=" + password;
 				postData += "&other_steam_id=" + OtherSID.ConvertToUInt64();
 
-				string url = "http://127.0.0.1:7001/backend/check_bot.php";
+				string url = "http://skinbonanza.com/backend/check_bot.php";
 				var updaterequest = (HttpWebRequest)WebRequest.Create (url);
 
 				var data = Encoding.ASCII.GetBytes (postData);
