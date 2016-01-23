@@ -32,6 +32,7 @@ namespace SteamBot
 			if(IsAdmin)
 			{
 				Log.Info("New Tradeoffer from admin! Accepting and confirming.");
+				//Make this log something somewhere that tells us the trade value of outgoing items.
 				offer.Accept();
 				Bot.AcceptAllMobileTradeConfirmations();
 			}

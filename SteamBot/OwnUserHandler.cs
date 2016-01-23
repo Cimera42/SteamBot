@@ -134,59 +134,52 @@ namespace SteamBot
 					if (tradeOffer.Items.NewVersion)
 					{
 						string tradeID;
-						try
+						if(tradeOffer.SendWithToken(out tradeID, trade.user.token, "Secure Code: " + trade.code))
 						{
-							if(tradeOffer.SendWithToken(out tradeID, trade.user.token, "Secure Code: " + trade.code))
-							{
-								Log.Success("New TradeID: " + tradeID);
-								tradesDone[trade.tradeid] = true;
-								tradeStatuses[trade.tradeid] = new TradeStatus(user.steamid, tradeID, trade.tradeid, trade.type);
+							Log.Success("New TradeID: " + tradeID);
+							tradesDone[trade.tradeid] = true;
+							tradeStatuses[trade.tradeid] = new TradeStatus(user.steamid, tradeID, trade.tradeid, trade.type);
 
-								string setTradeIDData = "password=" + password;
-								setTradeIDData += "&trade_id=" + trade.tradeid;
-								setTradeIDData += "&trade_steam_id=" + tradeID;
+							string setTradeIDData = "password=" + password;
+							setTradeIDData += "&trade_id=" + trade.tradeid;
+							setTradeIDData += "&trade_steam_id=" + tradeID;
 
-								string url = "http://skinbonanza.com/backend/update_trade.php";
-								var updaterequest = (HttpWebRequest)WebRequest.Create (url);
+							string url = "http://skinbonanza.com/backend/update_trade.php";
+							var updaterequest = (HttpWebRequest)WebRequest.Create (url);
 
-								var setTradeID_data = Encoding.ASCII.GetBytes (setTradeIDData);
+							var setTradeID_data = Encoding.ASCII.GetBytes (setTradeIDData);
 
-								updaterequest.Method = "POST";
-								updaterequest.ContentType = "application/x-www-form-urlencoded";
-								updaterequest.ContentLength = setTradeID_data.Length;
+							updaterequest.Method = "POST";
+							updaterequest.ContentType = "application/x-www-form-urlencoded";
+							updaterequest.ContentLength = setTradeID_data.Length;
 
-								using (var stream = updaterequest.GetRequestStream ()) {
-									stream.Write (setTradeID_data, 0, setTradeID_data.Length);
-								}
-
-								for(int attempts = 0;;attempts++)
-								{
-									try
-									{
-										var response = (HttpWebResponse)updaterequest.GetResponse ();
-										var responseString = new StreamReader (response.GetResponseStream ()).ReadToEnd ();
-										if(responseString.Contains("success"))
-										{
-											Log.Info("Steam TradeID set in update_trade.");
-										}
-										break;
-									}
-									catch (Exception e)
-									{
-										Log.Error (e.Message);
-										if(attempts > 4)
-											throw e;
-									}
-								}
+							using (var stream = updaterequest.GetRequestStream ()) {
+								stream.Write (setTradeID_data, 0, setTradeID_data.Length);
 							}
-							else
+
+							for(int attempts = 0;;attempts++)
 							{
-								Log.Error("Trade offer failed to send");
+								try
+								{
+									var response = (HttpWebResponse)updaterequest.GetResponse ();
+									var responseString = new StreamReader (response.GetResponseStream ()).ReadToEnd ();
+									if(responseString.Contains("success"))
+									{
+										Log.Info("Steam TradeID set in update_trade.");
+									}
+									break;
+								}
+								catch (Exception e)
+								{
+									Log.Error (e.Message);
+									if(attempts > 4)
+										throw e;
+								}
 							}
 						}
-						catch (Exception exc)
+						else
 						{
-							Log.Error("Trade offer could not be sent " + exc.Message);
+							Log.Error("Trade offer failed to send. Cancelling.");
 
 							string postData = "password=" + password;
 							postData += "&trade_id=" + trade.tradeid;
@@ -343,7 +336,8 @@ namespace SteamBot
 										MatchCollection matches = r.Matches(input);
 										foreach (Match match in matches) 
 										{
-											string itemJSON = match.Value;
+											string itemJSON;
+											itemJSON = match.Value.Split(',')[0] + "}"; //Strips everything past the id to prevent any issues
 											dynamic itemJsonified = JsonConvert.DeserializeObject (itemJSON);
 											string itemID = itemJsonified.id;
 											long id = Convert.ToInt64 (itemID);
@@ -429,9 +423,16 @@ namespace SteamBot
 		public void Callback( Object state )
 		{
 			// Long running operation
-			checkForTrades ();
-			checkTradeStatuses ();
-			tradeCheckTimer.Change(5000, Timeout.Infinite );
+			try
+			{
+				checkForTrades ();
+				checkTradeStatuses ();
+				tradeCheckTimer.Change(5000, Timeout.Infinite );
+			}
+			catch(Exception e) {
+				Log.Error (e.Message);
+				tradeCheckTimer = new System.Threading.Timer (Callback, null, 5000, Timeout.Infinite );
+			}
 		}
 
         public override void OnLoginCompleted()
