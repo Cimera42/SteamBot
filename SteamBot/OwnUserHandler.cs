@@ -422,16 +422,19 @@ namespace SteamBot
 
 		public void Callback( Object state )
 		{
-			// Long running operation
-			try
+			if(Bot.SteamClient.IsConnected)
 			{
-				checkForTrades ();
-				checkTradeStatuses ();
-				tradeCheckTimer.Change(5000, Timeout.Infinite );
-			}
-			catch(Exception e) {
-				Log.Error (e.Message);
-				tradeCheckTimer = new System.Threading.Timer (Callback, null, 5000, Timeout.Infinite );
+				// Long running operation
+				try
+				{
+					checkForTrades ();
+					checkTradeStatuses ();
+					tradeCheckTimer.Change(5000, Timeout.Infinite );
+				}
+				catch(Exception e) {
+					Log.Error (e.Message);
+					tradeCheckTimer = new System.Threading.Timer (Callback, null, 5000, Timeout.Infinite );
+				}
 			}
 		}
 
