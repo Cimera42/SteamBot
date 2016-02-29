@@ -23,6 +23,13 @@ namespace SteamBot
 		System.Threading.Timer tradeCheckTimer;
 		bool debug_output = false;
 		Dictionary<int, bool> tradesDone = new Dictionary<int, bool>();
+		Dictionary<int, TradeAttempts> failedTrades = new Dictionary<int, TradeAttempts>();
+
+		public class TradeAttempts
+		{
+			public int attempts = 0;
+			public ulong lastAttempt = 0;//(ulong)(DateTime.UtcNow - new DateTime(1970, 1, 1)).TotalSeconds;
+		}
 
 		public class TradeUser
 		{
@@ -96,13 +103,41 @@ namespace SteamBot
 				}
 				else if(trade.status == 2 || trade.status == 9 || trade.status == 11)
 				{
+					//Trade not in update list, bot must have restarted, add now
 					Log.Info("Incomplete Trade Missing with tradeID: " + trade.tradeid);
 					tradesDone[trade.tradeid] = true;
 					tradeStatuses[trade.tradeid] = new TradeStatus(trade.user.steamid, trade.steamid, trade.tradeid, trade.type);						
 				}
 				else
 				{
-					Log.Info("Trade " + trade.tradeid + " not completed... Attempting");
+					if(trade.status == 12)
+					{
+						TradeAttempts failedAttempts;
+						//Check if trade is in dictionary (bot may have restarted)
+						if(failedTrades.TryGetValue(trade.tradeid, out failedAttempts))
+						{
+							//Check if enough time has elapsed to re-attempt trade
+							ulong now = (ulong)(DateTime.UtcNow - new DateTime(1970, 1, 1)).TotalSeconds;
+							if(now - failedAttempts.lastAttempt < (ulong)failedAttempts.attempts * 60 * 2)
+							{
+								//Not enough time has passed, continue with other trades
+								continue;
+							}
+							else
+							{
+								Log.Info("Failed Trade " + trade.tradeid + " time delay over... Attempting");
+							}
+						}
+						else
+						{
+							Log.Info("Failed Trade " + trade.tradeid + " not completed... Attempting");
+						}
+					}
+					else
+					{
+						Log.Info("Trade " + trade.tradeid + " not completed... Attempting");
+					}
+
 					TradeUser user = trade.user;
 
 					var tradeOffer = Bot.NewTradeOffer(new SteamID(user.steamid));
@@ -138,7 +173,14 @@ namespace SteamBot
 						{
 							Log.Success("New TradeID: " + tradeID);
 							tradesDone[trade.tradeid] = true;
+							//Add trade to list of trades to check status of (accepted, declined, etc)
 							tradeStatuses[trade.tradeid] = new TradeStatus(user.steamid, tradeID, trade.tradeid, trade.type);
+
+							//Remove trade from failed trades
+							if(failedTrades.ContainsKey(trade.tradeid))
+							{
+								failedTrades.Remove(trade.tradeid);
+							}
 
 							string setTradeIDData = "password=" + password;
 							setTradeIDData += "&trade_id=" + trade.tradeid;
@@ -179,7 +221,17 @@ namespace SteamBot
 						}
 						else
 						{
-							Log.Error("Trade offer failed to send. Cancelling.");
+							Log.Error("Trade offer failed to send. Attempting again after a time delay.");
+
+							if(!failedTrades.ContainsKey(trade.tradeid))
+							{
+								//First time trade has failed, add to list
+								failedTrades[trade.tradeid] = new TradeAttempts();
+							}
+							//Increment number of failed attempts for this trade
+							failedTrades[trade.tradeid].attempts += 1;
+							//Set last attempt time to now (epoch time)
+							failedTrades[trade.tradeid].lastAttempt = (ulong)(DateTime.UtcNow - new DateTime(1970, 1, 1)).TotalSeconds;
 
 							string postData = "password=" + password;
 							postData += "&trade_id=" + trade.tradeid;
@@ -224,7 +276,7 @@ namespace SteamBot
 
 						string postData = "password=" + password;
 						postData += "&trade_id=" + trade.tradeid;
-						postData += "&trade_status=" + 12;
+						postData += "&trade_status=" + 6;
 						postData += "&user_steam_id=" + user.steamid;
 						postData += "&bot_steam_id=" + Bot.SteamUser.SteamID.ConvertToUInt64();
 
