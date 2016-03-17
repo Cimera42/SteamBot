@@ -107,12 +107,13 @@ namespace SteamTrade.TradeOffer
         /// <param name="newTradeOfferId"></param>
         /// <param name="message"></param>
         /// <returns></returns>
-        public bool CounterOffer(out string newTradeOfferId, string message = "")
+		public bool CounterOffer(out string newTradeOfferId, out string tradeError, string message = "")
         {
             newTradeOfferId = String.Empty;
+			tradeError = String.Empty;
             if (!String.IsNullOrEmpty(TradeOfferId) && !IsOurOffer && OfferState == TradeOfferState.TradeOfferStateActive && Items.NewVersion)
             {
-                return Session.CounterOffer(message, PartnerSteamId, this.Items, out newTradeOfferId, TradeOfferId);
+				return Session.CounterOffer(message, PartnerSteamId, this.Items, out newTradeOfferId, out tradeError, TradeOfferId);
             }
             //todo: log
             Debug.WriteLine("Can't counter offer a trade that doesn't have an offerid, is ours or isn't active");
@@ -125,12 +126,13 @@ namespace SteamTrade.TradeOffer
         /// <param name="offerId">The trade offer id if successully created</param>
         /// <param name="message">Optional message to included with the trade offer</param>
         /// <returns>true if successfully sent, otherwise false</returns>
-        public bool Send(out string offerId, string message = "")
+		public bool Send(out string offerId, out string tradeError, string message = "")
         {
             offerId = String.Empty;
+			tradeError = String.Empty;
             if (TradeOfferId == null)
             {
-                return Session.SendTradeOffer(message, PartnerSteamId, this.Items, out offerId);
+				return Session.SendTradeOffer(message, PartnerSteamId, this.Items, out offerId, out tradeError);
             }
             //todo: log
             Debug.WriteLine("Can't send a trade offer that already exists.");
@@ -141,15 +143,17 @@ namespace SteamTrade.TradeOffer
         /// Send a new trade offer using a token
         /// </summary>
         /// <param name="offerId">The trade offer id if successully created</param>
+        /// <param name="offerId">The trade error if trade send failed</param>
         /// <param name="token">The token of the partner</param>
         /// <param name="message">Optional message to included with the trade offer</param>
         /// <returns></returns>
-        public bool SendWithToken(out string offerId, string token, string message = "")
+        public bool SendWithToken(out string offerId, out string tradeError, string token, string message = "")
         {
             offerId = String.Empty;
+			tradeError = String.Empty;
             if (TradeOfferId == null)
             {
-                return Session.SendTradeOfferWithToken(message, PartnerSteamId, this.Items, token, out offerId);
+				return Session.SendTradeOfferWithToken(message, PartnerSteamId, this.Items, token, out offerId, out tradeError);
             }
             //todo: log
             Debug.WriteLine("Can't send a trade offer that already exists.");

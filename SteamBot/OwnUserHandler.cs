@@ -23,7 +23,6 @@ namespace SteamBot
 		System.Threading.Timer tradeCheckTimer;
 		bool debug_output = false;
 		Dictionary<int, bool> tradesDone = new Dictionary<int, bool>();
-		Dictionary<int, TradeAttempts> failedTrades = new Dictionary<int, TradeAttempts>();
 
 		public class TradeAttempts
 		{
@@ -110,33 +109,7 @@ namespace SteamBot
 				}
 				else
 				{
-					if(trade.status == 12)
-					{
-						TradeAttempts failedAttempts;
-						//Check if trade is in dictionary (bot may have restarted)
-						if(failedTrades.TryGetValue(trade.tradeid, out failedAttempts))
-						{
-							//Check if enough time has elapsed to re-attempt trade
-							ulong now = (ulong)(DateTime.UtcNow - new DateTime(1970, 1, 1)).TotalSeconds;
-							if(now - failedAttempts.lastAttempt < (ulong)failedAttempts.attempts * 60 * 2)
-							{
-								//Not enough time has passed, continue with other trades
-								continue;
-							}
-							else
-							{
-								Log.Info("Failed Trade " + trade.tradeid + " time delay over... Attempting");
-							}
-						}
-						else
-						{
-							Log.Info("Failed Trade " + trade.tradeid + " not completed... Attempting");
-						}
-					}
-					else
-					{
-						Log.Info("Trade " + trade.tradeid + " not completed... Attempting");
-					}
+					Log.Info("Trade " + trade.tradeid + " not completed... Attempting");
 
 					TradeUser user = trade.user;
 
@@ -168,19 +141,16 @@ namespace SteamBot
 
 					if (tradeOffer.Items.NewVersion)
 					{
-						string tradeID;
-						if(tradeOffer.SendWithToken(out tradeID, trade.user.token, "Secure Code: " + trade.code))
+						string tradeID = "";
+						string tradeError = "";
+						bool sent = tradeOffer.SendWithToken(out tradeID, out tradeError, trade.user.token, "Secure Code: " + trade.code);
+
+						if(sent)
 						{
 							Log.Success("New TradeID: " + tradeID);
 							tradesDone[trade.tradeid] = true;
 							//Add trade to list of trades to check status of (accepted, declined, etc)
 							tradeStatuses[trade.tradeid] = new TradeStatus(user.steamid, tradeID, trade.tradeid, trade.type);
-
-							//Remove trade from failed trades
-							if(failedTrades.ContainsKey(trade.tradeid))
-							{
-								failedTrades.Remove(trade.tradeid);
-							}
 
 							string setTradeIDData = "password=" + password;
 							setTradeIDData += "&trade_id=" + trade.tradeid;
@@ -221,21 +191,39 @@ namespace SteamBot
 						}
 						else
 						{
-							Log.Error("Trade offer failed to send. Attempting again after a time delay.");
-
-							if(!failedTrades.ContainsKey(trade.tradeid))
+							int statusID = 12;
+							if(!String.IsNullOrEmpty(tradeError))
 							{
-								//First time trade has failed, add to list
-								failedTrades[trade.tradeid] = new TradeAttempts();
+								if(tradeError.Contains("JSonException"))
+								{
+									Log.Error("Trade may have been sent, but a JSON conversion error occurred");
+									statusID = 14;
+								}
+								else if(tradeError.Contains("ResponseEmpty"))
+								{
+									Log.Error("The request was sent, but Steam returned an empty response");
+									statusID = 15;
+								}
+								else if(tradeError.Contains("(26)"))
+								{
+									Log.Error("The trade contains an invalid trade item");
+									statusID = 16;
+								}
+								else if(tradeError.Contains("(15)"))
+								{
+									Log.Error("The trade url for the user is invalid");
+									statusID = 17;
+								}
+								else if(tradeError.Contains("(50)"))
+								{
+									Log.Error("Too many concurrent trade offers sent (5 max)");
+									statusID = 18;
+								}
 							}
-							//Increment number of failed attempts for this trade
-							failedTrades[trade.tradeid].attempts += 1;
-							//Set last attempt time to now (epoch time)
-							failedTrades[trade.tradeid].lastAttempt = (ulong)(DateTime.UtcNow - new DateTime(1970, 1, 1)).TotalSeconds;
 
 							string postData = "password=" + password;
 							postData += "&trade_id=" + trade.tradeid;
-							postData += "&trade_status=" + 12;
+							postData += "&trade_status=" + statusID;
 							postData += "&user_steam_id=" + user.steamid;
 							postData += "&bot_steam_id=" + Bot.SteamUser.SteamID.ConvertToUInt64();
 

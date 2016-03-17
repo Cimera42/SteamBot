@@ -45,7 +45,8 @@ namespace SteamBot
                     if (offer.Items.NewVersion)
                     {
                         string newOfferId;
-                        if (offer.CounterOffer(out newOfferId))
+                        string tradeError;
+						if (offer.CounterOffer(out newOfferId, out tradeError))
                         {
                             Bot.AcceptAllMobileTradeConfirmations();
                             Log.Success("Counter offered successfully : New Offer ID: " + newOfferId);
@@ -74,7 +75,8 @@ namespace SteamBot
                 if (offer.Items.NewVersion)
                 {
                     string newOfferId;
-                    if (offer.Send(out newOfferId))
+					string tradeError;
+					if (offer.Send(out newOfferId, out tradeError))
                     {
                         Bot.AcceptAllMobileTradeConfirmations();
                         Log.Success("Trade offer sent : Offer ID " + newOfferId);
@@ -88,8 +90,9 @@ namespace SteamBot
                 if (offerWithToken.Items.NewVersion)
                 {
                     string newOfferId;
+					string tradeError;
                     // "token" should be replaced with the actual token from the other user
-                    if (offerWithToken.SendWithToken(out newOfferId, "token"))
+					if (offerWithToken.SendWithToken(out newOfferId, out tradeError, "token"))
                     {
                         Bot.AcceptAllMobileTradeConfirmations();
                         Log.Success("Trade offer sent : Offer ID " + newOfferId);

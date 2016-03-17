@@ -155,7 +155,7 @@ namespace SteamTrade.TradeOffer
         /// <param name="newTradeOfferId">The trade offer Id that will be created if successful</param>
         /// <param name="tradeOfferId">The trade offer Id of the offer being countered</param>
         /// <returns></returns>
-        public bool CounterOffer(string message, SteamID otherSteamId, TradeOffer.TradeStatus status, out string newTradeOfferId, string tradeOfferId)
+		public bool CounterOffer(string message, SteamID otherSteamId, TradeOffer.TradeStatus status, out string newTradeOfferId, out string tradeError, string tradeOfferId)
         {
             if (String.IsNullOrEmpty(tradeOfferId))
             {
@@ -173,7 +173,7 @@ namespace SteamTrade.TradeOffer
 
             string referer = string.Format("https://steamcommunity.com/tradeoffer/{0}/", tradeOfferId);
 
-            if (!Request(SendUrl, data, referer, tradeOfferId, out newTradeOfferId))
+			if (!Request(SendUrl, data, referer, tradeOfferId, out newTradeOfferId, out tradeError))
             {
                 var state = webApi.GetOfferState(tradeOfferId);
                 if (state == TradeOfferState.TradeOfferStateCountered)
@@ -193,7 +193,7 @@ namespace SteamTrade.TradeOffer
         /// <param name="status">The list of items we and they are going to trade</param>
         /// <param name="newTradeOfferId">The trade offer Id that will be created if successful</param>
         /// <returns>True if successfully returns a newTradeOfferId, else false</returns>
-        public bool SendTradeOffer(string message, SteamID otherSteamId, TradeOffer.TradeStatus status, out string newTradeOfferId)
+		public bool SendTradeOffer(string message, SteamID otherSteamId, TradeOffer.TradeStatus status, out string newTradeOfferId, out string tradeError)
         {
             var data = new NameValueCollection();
             data.Add("sessionid", steamWeb.SessionId);
@@ -206,7 +206,7 @@ namespace SteamTrade.TradeOffer
             string referer = string.Format("https://steamcommunity.com/tradeoffer/new/?partner={0}",
                 otherSteamId.AccountID);
 
-            return Request(SendUrl, data, referer, null, out newTradeOfferId);
+			return Request(SendUrl, data, referer, null, out newTradeOfferId, out tradeError);
         }
 
         /// <summary>
@@ -219,7 +219,7 @@ namespace SteamTrade.TradeOffer
         /// <param name="newTradeOfferId">The trade offer Id that will be created if successful</param>
         /// <returns>True if successfully returns a newTradeOfferId, else false</returns>
         public bool SendTradeOfferWithToken(string message, SteamID otherSteamId, TradeOffer.TradeStatus status,
-            string token, out string newTradeOfferId)
+			string token, out string newTradeOfferId, out string tradeError)
         {
             if (String.IsNullOrEmpty(token))
             {
@@ -237,42 +237,57 @@ namespace SteamTrade.TradeOffer
 
             string referer = string.Format("https://steamcommunity.com/tradeoffer/new/?partner={0}&token={1}",
                         otherSteamId.AccountID, token);
-            return Request(SendUrl, data, referer, null, out newTradeOfferId);
+			return Request(SendUrl, data, referer, null, out newTradeOfferId, out tradeError);
         }
 
-        internal bool Request(string url, NameValueCollection data, string referer, string tradeOfferId, out string newTradeOfferId)
+		internal bool Request(string url, NameValueCollection data, string referer, string tradeOfferId, out string newTradeOfferId, out string tradeError)
         {
             newTradeOfferId = "";
+			tradeError = "";
 
-			try
-			{
-				string resp = steamWeb.Fetch(url, "POST", data, false, referer);
+			string resp;
+
+			try { 
+				resp = steamWeb.Fetch(url, "POST", data, false, referer);
+
 	            if (!String.IsNullOrEmpty(resp))
 	            {
 	                try
 	                {
 	                    var offerResponse = JsonConvert.DeserializeObject<NewTradeOfferResponse>(resp);
-	                    if (!String.IsNullOrEmpty(offerResponse.TradeOfferId))
+						bool offID_Empty = String.IsNullOrEmpty(offerResponse.TradeOfferId);
+						if (!offID_Empty)
 	                    {
 	                        newTradeOfferId = offerResponse.TradeOfferId;
-	                        return true;
-	                    }
+							return true;
+						}
 	                    else
 	                    {
 	                        //todo: log possible error
-	                        Debug.WriteLine(offerResponse.TradeError);
+							Debug.WriteLine(offerResponse.TradeError);
+
+							bool traErr_Empty = String.IsNullOrEmpty(offerResponse.TradeError);
+							if (!traErr_Empty)
+							{
+								tradeError = offerResponse.TradeError;
+							}
+							tradeError = offerResponse.TradeError;
+
+							return false;
 	                    }
 	                }
 	                catch (JsonException jsex)
 	                {
-	                    Debug.WriteLine(jsex);
+						Debug.WriteLine(jsex);
+						tradeError = "JSonException";
+						return false;
 	                }
 	            }
-	            return false;
-			}
-			catch (Exception e)
-			{
-				Debug.WriteLine (e.Message);
+				tradeError = "ResponseEmpty";
+				return false;
+
+			} catch (WebException ex) {
+				tradeError = new StreamReader(ex.Response.GetResponseStream()).ReadToEnd();
 				return false;
 			}
         }
