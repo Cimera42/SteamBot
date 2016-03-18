@@ -8,8 +8,8 @@ namespace SteamTrade.TradeOffer
     public class TradeOfferManager
     {
         private readonly HashSet<string> tradeOfferHistory = new HashSet<string>();
-        private readonly OfferSession session;
-        private readonly TradeOfferWebAPI webApi;
+        public readonly OfferSession session;
+        public readonly TradeOfferWebAPI webApi;
 
         public int LastTimeCheckedOffers { get; private set; }
 

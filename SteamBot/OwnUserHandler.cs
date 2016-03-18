@@ -93,6 +93,7 @@ namespace SteamBot
 				}
 			}
 
+			//Prevent valid trades from being cancelled because they dont exist in tradeStatuses yet
 			foreach(TradeData trade in data.trades)
 			{
 				bool tradeValue;
@@ -106,6 +107,15 @@ namespace SteamBot
 					Log.Info("Incomplete Trade Missing with tradeID: " + trade.tradeid);
 					tradesDone[trade.tradeid] = true;
 					tradeStatuses[trade.tradeid] = new TradeStatus(trade.user.steamid, trade.steamid, trade.tradeid, trade.type);						
+				}
+			}
+
+			foreach(TradeData trade in data.trades)
+			{
+				bool tradeValue;
+				if(tradesDone.TryGetValue(trade.tradeid, out tradeValue))
+				{
+					//Log.Info("Trade " + trade.tradeid + " already made");
 				}
 				else
 				{
@@ -220,6 +230,71 @@ namespace SteamBot
 									statusID = 18;
 								}
 							}
+
+							int knownActiveTradesCount = 0;
+							foreach(KeyValuePair<int, TradeStatus> knowntrade in tradeStatuses)
+							{
+								if(knowntrade.Value.state == TradeOfferState.TradeOfferStateCanceled
+									|| knowntrade.Value.state == TradeOfferState.TradeOfferStateCountered
+									|| knowntrade.Value.state == TradeOfferState.TradeOfferStateDeclined
+									|| knowntrade.Value.state == TradeOfferState.TradeOfferStateExpired
+									|| knowntrade.Value.state == TradeOfferState.TradeOfferStateInvalid
+									|| knowntrade.Value.state == TradeOfferState.TradeOfferStateInvalidItems
+									|| knowntrade.Value.state == TradeOfferState.TradeOfferStateCanceledBySecondFactor
+									|| knowntrade.Value.itemsPushed == true)
+								{
+								}
+								else
+								{
+									knownActiveTradesCount++;
+								}
+							}
+
+							OffersResponse offersresponse = Bot.tradeOfferManager.webApi.GetActiveTradeOffers(true, false, false);
+							List<Offer> activeTrades = offersresponse.TradeOffersSent;
+							bool unmatched = false;
+							if(activeTrades.Count != knownActiveTradesCount)
+							{
+								foreach(Offer offer in activeTrades)
+								{
+									//GetActiveOffers still gets cancelled and declined trades
+									//so check that the trade is actually active
+									if(offer.TradeOfferState == TradeOfferState.TradeOfferStateActive
+										|| offer.TradeOfferState == TradeOfferState.TradeOfferStateNeedsConfirmation
+										|| offer.TradeOfferState == TradeOfferState.TradeOfferStateInEscrow)
+									{
+										foreach(KeyValuePair<int, TradeStatus> checkTrade in tradeStatuses)
+										{
+											if(checkTrade.Value.state == TradeOfferState.TradeOfferStateCanceled
+												|| checkTrade.Value.state == TradeOfferState.TradeOfferStateCountered
+												|| checkTrade.Value.state == TradeOfferState.TradeOfferStateDeclined
+												|| checkTrade.Value.state == TradeOfferState.TradeOfferStateExpired
+												|| checkTrade.Value.state == TradeOfferState.TradeOfferStateInvalid
+												|| checkTrade.Value.state == TradeOfferState.TradeOfferStateInvalidItems
+												|| checkTrade.Value.state == TradeOfferState.TradeOfferStateCanceledBySecondFactor
+												|| checkTrade.Value.itemsPushed == true)
+											{
+											}
+											else
+											{
+												if(checkTrade.Value.steam_trade_id == offer.TradeOfferId)
+												{
+													//matching trade found
+													continue;
+												}
+											}
+										}
+
+										//no matching trade found
+										//trade not being tracked
+										unmatched = true;
+										Log.Error("Untracked trade found {0}, cancelling it", offer.TradeOfferId);
+										Bot.tradeOfferManager.session.Cancel(offer.TradeOfferId);
+									}
+								}
+							}
+							if(!unmatched)
+								Log.Success("No non-tracked trades found");
 
 							string postData = "password=" + password;
 							postData += "&trade_id=" + trade.tradeid;
