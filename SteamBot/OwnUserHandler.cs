@@ -149,6 +149,10 @@ namespace SteamBot
 						Log.Info("Withdrawal: " + count + " items being traded to user " + user.steamid);
 					}
 
+
+					if (tradeOffer.Items.NewVersion == null) {
+						Log.Error ("TradeOffer is appearing as NULL, restarting the bot may fix?");
+					}
 					if (tradeOffer.Items.NewVersion)
 					{
 						string tradeID = "";
@@ -202,33 +206,27 @@ namespace SteamBot
 						else
 						{
 							int statusID = 12;
-							if(!String.IsNullOrEmpty(tradeError))
-							{
-								if(tradeError.Contains("JSonException"))
-								{
-									Log.Error("Trade may have been sent, but a JSON conversion error occurred");
+							if (!String.IsNullOrEmpty (tradeError)) {
+								if (tradeError.Contains ("JSonException")) {
+									Log.Error ("Trade may have been sent, but a JSON conversion error occurred");
 									statusID = 14;
-								}
-								else if(tradeError.Contains("ResponseEmpty"))
-								{
-									Log.Error("The request was sent, but Steam returned an empty response");
+								} else if (tradeError.Contains ("ResponseEmpty")) {
+									Log.Error ("The request was sent, but Steam returned an empty response");
 									statusID = 15;
-								}
-								else if(tradeError.Contains("(26)"))
-								{
-									Log.Error("The trade contains an invalid trade item");
+								} else if (tradeError.Contains ("(26)")) {
+									Log.Error ("The trade contains an invalid trade item");
 									statusID = 16;
-								}
-								else if(tradeError.Contains("(15)"))
-								{
-									Log.Error("The trade url for the user is invalid");
+								} else if (tradeError.Contains ("(15)")) {
+									Log.Error ("The trade url for the user is invalid");
 									statusID = 17;
-								}
-								else if(tradeError.Contains("(50)"))
-								{
-									Log.Error("Too many concurrent trade offers sent (5 max)");
+								} else if (tradeError.Contains ("(50)")) {
+									Log.Error ("Too many concurrent trade offers sent (5 max)");
 									statusID = 18;
+								} else {
+									Log.Error ("Error: {0}", tradeError);
 								}
+							} else {
+								Log.Error ("Trade not sent and trade error is null/empty!");
 							}
 
 							int knownActiveTradesCount = 0;
@@ -294,7 +292,7 @@ namespace SteamBot
 								}
 							}
 							if(!unmatched)
-								Log.Success("No non-tracked trades found");
+								Log.Success("No non-tracked trades found.");
 
 							string postData = "password=" + password;
 							postData += "&trade_id=" + trade.tradeid;
